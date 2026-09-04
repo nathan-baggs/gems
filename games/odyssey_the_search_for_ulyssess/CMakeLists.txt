@@ -24,13 +24,14 @@ target_compile_options(ddraw PRIVATE
   -Wwrite-strings
   -Wno-cast-function-type
   -Wno-missing-declarations
+  -freflection
 )
 
 target_include_directories(ddraw PUBLIC ${PROJECT_SOURCE_DIR})
 target_include_directories(ddraw PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(ddraw PRIVATE cxx_std_26)
 target_compile_definitions(ddraw PRIVATE -DNOMINMAX)
-target_link_libraries(ddraw PRIVATE stdc++exp ddraw_dll_main)
+target_link_libraries(ddraw PRIVATE stdc++exp -lshlwapi)
 target_link_options(ddraw PRIVATE "-Wl,--enable-stdcall-fixup")
 set_target_properties(ddraw PROPERTIES PREFIX "")
 
