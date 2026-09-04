@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <libloaderapi.h>
 #include <memory>
@@ -15,6 +16,7 @@
 #include "core/utils/error.h"
 #include "core/utils/iat_patcher.h"
 #include "core/utils/log.h"
+#include "core/utils/trampoline.h"
 
 using namespace std::literals;
 
@@ -51,6 +53,7 @@ namespace gems::impl
 auto g_kernel32 = ::HMODULE{};
 auto g_proxied_ddraw = ::HMODULE{};
 auto g_iat_entries = std::unordered_map<std::string_view, void *>{};
+auto g_system_dll_functions = std::unordered_map<std::string_view, void *>{};
 void *g_get_proc_address = {};
 
 auto narrow(std::wstring_view str) -> std::string
@@ -168,8 +171,37 @@ VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIF
     return reinterpret_cast<decltype(&GetProcAddress)>(g_get_proc_address)(hModule, lpProcName);
 }
 
-auto try_load_iat_hooks(std::source_location loc = std::source_location::current()) -> void *
+template <auto namespce, auto annotation>
+consteval auto find_functions_with_annotations() -> std::vector<std::meta::info>
 {
+    auto functions = std::vector<std::meta::info>{};
+
+    constexpr auto ctx = std::meta::access_context::current();
+    template for (constexpr auto func : std::define_static_array(std::meta::members_of(namespce, ctx)))
+    {
+        if constexpr (std::meta::is_function(func))
+        {
+            constexpr auto annotations =
+                std::define_static_array(std::meta::annotations_of_with_type(func, annotation));
+
+            if constexpr (!std::ranges::empty(annotations))
+            {
+                functions.push_back(func);
+            }
+        }
+    }
+
+    return functions;
+}
+
+auto try_load_iat_hooks(std::source_location loc = std::source_location::current())
+{
+    static auto completed = std::atomic<bool>{false};
+    if (completed.exchange(true))
+    {
+        return;
+    }
+
     const auto ntdll = ::LoadLibrary("ntdll.dll");
     ensure(ntdll != NULL, "failed to load ntdll");
 
@@ -191,49 +223,43 @@ auto try_load_iat_hooks(std::source_location loc = std::source_location::current
 
     log("loading iat hooks, called from: {}", loc.function_name());
 
-    void *ret_func = nullptr;
-
     const auto system_ddraw = load_system_dll("ddraw.dll");
     log("loaded system ddraw.dll: {}", static_cast<void *>(system_ddraw));
 
-    static auto completed = std::atomic<bool>{false};
-    ensure(!completed.exchange(true), "iat already loaded: {}", loc.function_name());
+    static constexpr auto proxy_functions =
+        std::define_static_array(find_functions_with_annotations<^^gems, ^^IATProxyAnnotation>());
+    static constexpr auto to_patch_functions =
+        std::define_static_array(find_functions_with_annotations<^^::, ^^IATPatchAnnotation>());
 
-    constexpr auto ctx = std::meta::access_context::current();
-    template for (constexpr auto func : std::define_static_array(std::meta::members_of(^^::, ctx)))
+    template for (constexpr auto func : to_patch_functions)
     {
-        if constexpr (std::meta::is_function(func))
+        constexpr auto func_name = std::meta::identifier_of(func);
+
+        const auto func_name_str = std::string(std::ranges::data(func_name), std::ranges::size(func_name));
+        auto *addr = reinterpret_cast<void *>(::GetProcAddress(system_ddraw, func_name_str.c_str()));
+
+        g_system_dll_functions[func_name] = addr;
+
+        if constexpr (
+            std::ranges::contains(proxy_functions, func_name, [](const auto e) { return std::meta::identifier_of(e); }))
         {
-            constexpr auto annotations =
-                std::define_static_array(std::meta::annotations_of_with_type(func, ^^IATPatchAnnotation));
+            constexpr auto proxy_func_meta =
+                std::ranges::find(proxy_functions, func_name, [](const auto e) { return std::meta::identifier_of(e); });
 
-            if constexpr (!std::ranges::empty(annotations))
-            {
-                const auto func_name = std::meta::identifier_of(func);
-                const auto func_name_str = std::string(std::ranges::data(func_name), std::ranges::size(func_name));
-                const auto real_addr = reinterpret_cast<void *>(::GetProcAddress(system_ddraw, func_name_str.c_str()));
-                ensure(real_addr, "{} not found", func_name_str);
+            using ArgsTupleType = GetArgs<typename[:std::meta::type_of(func):]>::type;
+            constexpr auto trampoline = build_trampoline<ArgsTupleType>(func, *proxy_func_meta);
 
-                log("{}", func_name);
-                g_iat_entries[func_name] = real_addr;
-
-                if (std::string_view{loc.function_name()}.contains(func_name))
-                {
-                    ret_func = real_addr;
-                }
-            }
+            addr = reinterpret_cast<void *>(&[:trampoline:]);
         }
+
+        ensure(addr, "{} not found", func_name);
+        g_iat_entries[func_name] = addr;
     }
 
     log("found {} iat entries to patch", std::ranges::size(g_iat_entries));
 
     iat_patcher("ddraw.dll", g_iat_entries);
-
-    log("iat patcher done, returning: {}", ret_func);
-
     iat_patcher("kernel32.dll", {{"GetProcAddress", reinterpret_cast<void *>(&gems::impl::GetProcAddress)}});
-
-    return ret_func;
 }
 }
 
@@ -242,134 +268,222 @@ extern "C"
 
 [[= gems::IATPatch]] void WINAPI AcquireDDThreadLock()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    reinterpret_cast<decltype(&AcquireDDThreadLock)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("AcquireDDThreadLock");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    reinterpret_cast<decltype(&AcquireDDThreadLock)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] void WINAPI ReleaseDDThreadLock()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    reinterpret_cast<decltype(&ReleaseDDThreadLock)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("ReleaseDDThreadLock");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    reinterpret_cast<decltype(&ReleaseDDThreadLock)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawEnumerateA(::LPDDENUMCALLBACKA a, ::LPVOID b)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawEnumerateA)>(orig_func)(a, b);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawEnumerateA");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawEnumerateA)>(orig_func->second)(a, b);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawEnumerateW(::LPDDENUMCALLBACKW a, ::LPVOID b)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawEnumerateW)>(orig_func)(a, b);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawEnumerateW");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawEnumerateW)>(orig_func->second)(a, b);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawEnumerateExA(::LPDDENUMCALLBACKEXA a, ::LPVOID b, ::DWORD c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawEnumerateExA)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawEnumerateExA");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawEnumerateExA)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawEnumerateExW(::LPDDENUMCALLBACKEXW a, ::LPVOID b, ::DWORD c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawEnumerateExW)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawEnumerateExW");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawEnumerateExW)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawCreateClipper(::DWORD a, ::LPDIRECTDRAWCLIPPER *b, ::IUnknown *c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawCreateClipper)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawCreateClipper");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawCreateClipper)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawCreate(::GUID *a, ::LPDIRECTDRAW *b, ::IUnknown *c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawCreate)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawCreate");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawCreate)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DirectDrawCreateEx(::GUID *a, ::LPVOID *b, REFIID c, ::IUnknown *d)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DirectDrawCreateEx)>(orig_func)(a, b, c, d);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DirectDrawCreateEx");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DirectDrawCreateEx)>(orig_func->second)(a, b, c, d);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI D3DParseUnknownCommand(::LPVOID a, ::LPVOID *b)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&D3DParseUnknownCommand)>(orig_func)(a, b);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("D3DParseUnknownCommand");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&D3DParseUnknownCommand)>(orig_func->second)(a, b);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI GetSurfaceFromDC(::HDC a, ::LPDIRECTDRAWSURFACE4 *b, ::HDC *c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&GetSurfaceFromDC)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("GetSurfaceFromDC");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&GetSurfaceFromDC)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DllCanUnloadNow()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DllCanUnloadNow)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DllCanUnloadNow");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DllCanUnloadNow)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DllGetClassObject(REFCLSID a, REFIID b, void **c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DllGetClassObject)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DllGetClassObject");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DllGetClassObject)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI CompleteCreateSysmemSurface()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&CompleteCreateSysmemSurface)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("CompleteCreateSysmemSurface");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&CompleteCreateSysmemSurface)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DDGetAttachedSurfaceLcl(::DWORD a, ::DWORD b, ::DWORD c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DDGetAttachedSurfaceLcl)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DDGetAttachedSurfaceLcl");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DDGetAttachedSurfaceLcl)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DDInternalLock(::DWORD a, ::DWORD b)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DDInternalLock)>(orig_func)(a, b);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DDInternalLock");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DDInternalLock)>(orig_func->second)(a, b);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DDInternalUnlock(::DWORD a)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DDInternalUnlock)>(orig_func)(a);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DDInternalUnlock");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DDInternalUnlock)>(orig_func->second)(a);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI DSoundHelp(::DWORD a, ::DWORD b, ::DWORD c)
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&DSoundHelp)>(orig_func)(a, b, c);
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("DSoundHelp");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&DSoundHelp)>(orig_func->second)(a, b, c);
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI GetDDSurfaceLocal()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&GetDDSurfaceLocal)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("GetDDSurfaceLocal");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&GetDDSurfaceLocal)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI GetOLEThunkData()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&GetOLEThunkData)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("GetOLEThunkData");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&GetOLEThunkData)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI RegisterSpecialCase()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&RegisterSpecialCase)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("RegisterSpecialCase");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&RegisterSpecialCase)>(orig_func->second)();
 }
 
 [[= gems::IATPatch]] ::HRESULT WINAPI SetAppCompatData()
 {
-    const auto orig_func = gems::impl::try_load_iat_hooks();
-    return reinterpret_cast<decltype(&SetAppCompatData)>(orig_func)();
+    gems::impl::try_load_iat_hooks();
+
+    const auto orig_func = gems::impl::g_system_dll_functions.find("SetAppCompatData");
+    gems::ensure(orig_func != std::ranges::cend(gems::impl::g_system_dll_functions), "could not find iat entry");
+
+    return reinterpret_cast<decltype(&SetAppCompatData)>(orig_func->second)();
 }
 
 ::BOOL WINAPI DllMain(::HMODULE module, ::DWORD reason, void *)
