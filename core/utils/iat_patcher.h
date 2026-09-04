@@ -98,9 +98,6 @@ inline auto patch_out_module(
         const auto *imported_dll = reinterpret_cast<const char *>(base + import_descriptor->Name);
         const auto length = std::strlen(imported_dll);
 
-        std::string t{module_name};
-        log("    found {} [{}], comparing to {} [{}]", imported_dll, length, t, t.length());
-
         if (length != std::ranges::size(module_name))
         {
             continue;
@@ -110,8 +107,6 @@ inline auto patch_out_module(
         {
             continue;
         }
-
-        log("    searching for imported functions");
 
         for (const auto &[function_name, replacement] : iat_entries)
         {
@@ -127,7 +122,6 @@ inline auto patch_out_module(
                 continue;
             }
 
-            log("    looking for: {}", function_name);
             for (; original_thunk->u1.AddressOfData != 0; ++original_thunk, ++thunk)
             {
                 if (IMAGE_SNAP_BY_ORDINAL32(original_thunk->u1.Ordinal))
@@ -140,9 +134,6 @@ inline auto patch_out_module(
 
                 const auto *imported_function = reinterpret_cast<const char *>(import_by_name->Name);
                 const auto func_length = std::strlen(imported_function);
-
-                std::string tt{function_name};
-                log("        found {} [{}], comapring to {} [{}]", imported_function, func_length, tt, tt.length());
 
                 if (func_length != std::ranges::size(function_name))
                 {
