@@ -24,6 +24,25 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
     return res;
 }
 
+[[= IATProxy]] ::HRESULT WINAPI DirectDrawCreateEx(
+    decltype(&::DirectDrawCreateEx) orig,
+    ::GUID *lpGuid,
+    ::LPVOID *lplpDD,
+    REFIID iid,
+    ::IUnknown *pUnkOuter)
+{
+    const auto guid_str = lpGuid ? std::format("{}", *lpGuid) : "<null>";
+    log("DirectDrawCreateEx called ({} {} {} {})",
+        guid_str,
+        static_cast<void *>(lplpDD),
+        iid,
+        static_cast<void *>(pUnkOuter));
+
+    const auto res = orig(lpGuid, lplpDD, iid, pUnkOuter);
+    log("DirectDrawCreateEx res: {}", res);
+
+    return res;
+}
 }
 
 #include "core/dll_main/ddraw/ddraw_main.h"
