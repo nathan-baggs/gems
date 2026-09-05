@@ -16,27 +16,27 @@
 namespace gems
 {
 
-namespace direct_draw
+namespace IUnknown
 {
-DDRAW_EXPORT[[= COMDirectDrawProxy]] ::HRESULT WINAPI QueryInterface(
-    ::HRESULT(WINAPI *orig)(::IDirectDraw *, REFIID ridd, ::LPVOID FAR *ppvObj),
-    ::IDirectDraw *that,
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
+    ::HRESULT(WINAPI *orig)(::IUnknown *, REFIID ridd, ::LPVOID FAR *ppvObj),
+    ::IUnknown *that,
     REFIID ridd,
     ::LPVOID FAR *ppvObj)
 {
-    log("IDirectDraw::QueryInterface({}, {}, {}) orig: {}",
+    log("IUnknown::QueryInterface({}, {}, {}) orig: {}",
         static_cast<void *>(that),
         ridd,
         static_cast<void *>(ppvObj),
         reinterpret_cast<void *>(orig));
 
     const auto res = orig(that, ridd, ppvObj);
-    log("IDirectDraw::QueryInterface res: {}", res);
+    log("IUnknown::QueryInterface res: {}", res);
 
     if (SUCCEEDED(res) && ppvObj && *ppvObj)
     {
         log("installing follow on hooks for {}", reinterpret_cast<void *>(*ppvObj));
-        com_patch<^^direct_draw>(*ppvObj);
+        com_patch<^^IUnknown>(*ppvObj);
     }
 
     return res;
@@ -59,7 +59,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
 
         log("direct draw object created: {} [vtable start: {}]", static_cast<void *>(dd), static_cast<void *>(vtable));
 
-        com_patch<^^direct_draw>(dd);
+        com_patch<^^IUnknown>(dd);
     }
 
     return res;
@@ -91,7 +91,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
             static_cast<void *>(dd),
             static_cast<void *>(vtable));
 
-        com_patch<^^direct_draw>(dd);
+        com_patch<^^IUnknown>(dd);
     }
 
     return res;

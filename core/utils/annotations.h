@@ -14,9 +14,9 @@ struct IATProxyAnnotation
 };
 inline constexpr auto IATProxy = IATProxyAnnotation{};
 
-struct COMDirectDrawProxyAnnotation
+struct COMProxyAnnotation
 {
 };
-inline constexpr auto COMDirectDrawProxy = COMDirectDrawProxyAnnotation{};
+inline constexpr auto COMProxy = COMProxyAnnotation{};
 
 }

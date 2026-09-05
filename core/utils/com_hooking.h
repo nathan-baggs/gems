@@ -3,12 +3,14 @@
 #include <cstdint>
 #include <meta>
 #include <ranges>
+#include <span>
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
 
 #include "core/utils/annotations.h"
+#include "core/utils/auto_writer.h"
 #include "core/utils/error.h"
 #include "core/utils/log.h"
 #include "core/utils/meta.h"
@@ -19,37 +21,10 @@ namespace gems
 namespace impl
 {
 
-constexpr std::string_view g_ddraw_com_layout[] = {
+constexpr std::string_view g_iunknown_com_layout[] = {
     "QueryInterface",
     "AddRef",
     "Release",
-    "Compact",
-    "CreateClipper",
-    "CreatePalette",
-    "CreateSurface",
-    "DuplicateSurface",
-    "EnumDisplayModes",
-    "EnumSurfaces",
-    "FlipToGDISurface",
-    "GetCaps",
-    "GetDisplayMode",
-    "GetFourCCCodes",
-    "GetGDISurface",
-    "GetMonitorFrequency",
-    "GetScanLine",
-    "GetVerticalBlankStatus",
-    "Initialize",
-    "RestoreDisplayMode",
-    "SetCooperativeLevel",
-    "SetDisplayMode",
-    "WaitForVerticalBlank",
-    "GetAvailableVidMem",
-    "GetSurfaceFromDC",
-    "RestoreAllSurfaces",
-    "TestCooperativeLevel",
-    "GetDeviceIdentifier",
-    "StartModeTest",
-    "EvaluateMode",
 };
 
 struct Hook
@@ -60,7 +35,7 @@ struct Hook
     ::PROC hook_func;
 };
 
-auto g_ddraw_hooks = std::vector<Hook>{};
+auto g_hooks = std::vector<Hook>{};
 
 template <std::size_t Index, class R, class Orig, class... Args>
 __declspec(dllexport) auto WINAPI com_trampoline(void *that, Args... args) -> R
@@ -69,9 +44,9 @@ __declspec(dllexport) auto WINAPI com_trampoline(void *that, Args... args) -> R
     const auto *com_vtable = *com_obj;
 
     const auto hook_find = std::ranges::find_if(
-        impl::g_ddraw_hooks, [com_vtable](const auto &e) { return e.vtable == com_vtable && e.index == Index; });
+        impl::g_hooks, [com_vtable](const auto &e) { return e.vtable == com_vtable && e.index == Index; });
     ensure(
-        hook_find != std::ranges::cend(impl::g_ddraw_hooks),
+        hook_find != std::ranges::cend(impl::g_hooks),
         "could not find hook index: {} vtable: {} that: {}",
         Index,
         reinterpret_cast<const void *>(com_vtable),
@@ -95,6 +70,16 @@ consteval auto build_com_trampoline(std::meta::info orig_func_ptr) -> std::meta:
     return std::meta::substitute(^^com_trampoline, args_meta);
 }
 
+consteval auto namespace_to_function_names(std::string_view namespace_name) -> std::span<const std::string_view>
+{
+    if (namespace_name == "IUnknown")
+    {
+        return g_iunknown_com_layout;
+    }
+
+    return {};
+}
+
 template <class T>
 struct FuncInfo;
 
@@ -115,21 +100,25 @@ auto com_patch(T *obj)
     auto *com_vtable = *com_obj;
 
     static constexpr auto proxy_functions =
-        std::define_static_array(find_functions_with_annotations<namespce, ^^COMDirectDrawProxyAnnotation>());
+        std::define_static_array(find_functions_with_annotations<namespce, ^^COMProxyAnnotation>());
+
+    constexpr auto com_function_names = impl::namespace_to_function_names(std::meta::identifier_of(namespce));
 
     template for (constexpr auto func : proxy_functions)
     {
         constexpr auto func_name = std::meta::identifier_of(func);
-        constexpr auto find = std::ranges::find(impl::g_ddraw_com_layout, func_name);
+        constexpr auto find = std::ranges::find(com_function_names, func_name);
 
-        if constexpr (find != std::ranges::cend(impl::g_ddraw_com_layout))
+        if constexpr (find != std::ranges::cend(com_function_names))
         {
-            constexpr auto index = std::distance(std::ranges::begin(impl::g_ddraw_com_layout), find);
+            const auto auto_writer = AutoWriter{com_vtable, std::ranges::size(proxy_functions) * sizeof(void *)};
+
+            constexpr auto index = std::distance(std::ranges::begin(com_function_names), find);
 
             auto hook = std::ranges::find_if(
-                impl::g_ddraw_hooks,
+                impl::g_hooks,
                 [com_vtable, index](const auto &e) { return e.vtable == com_vtable && e.index == index; });
-            if (hook != std::ranges::cend(impl::g_ddraw_hooks))
+            if (hook != std::ranges::cend(impl::g_hooks))
             {
                 continue;
             }
@@ -143,7 +132,7 @@ auto com_patch(T *obj)
 
             const auto orig_func = std::exchange(com_vtable[index], reinterpret_cast<::PROC>(&[:trampoline:]));
 
-            impl::g_ddraw_hooks.push_back(
+            impl::g_hooks.push_back(
                 impl::Hook{
                     .vtable = com_vtable,
                     .index = index,
@@ -151,7 +140,7 @@ auto com_patch(T *obj)
                     .hook_func = reinterpret_cast<::PROC>(&[:func:]),
                 });
 
-            auto &new_hook = impl::g_ddraw_hooks.back();
+            auto &new_hook = impl::g_hooks.back();
             log("new com hook: {} {} -> {}, index: {} vtable: {}",
                 func_name,
                 reinterpret_cast<void *>(new_hook.orig_func),
