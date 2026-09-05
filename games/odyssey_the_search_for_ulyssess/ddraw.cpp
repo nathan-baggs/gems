@@ -33,6 +33,12 @@ DDRAW_EXPORT[[= COMDirectDrawProxy]] ::HRESULT WINAPI QueryInterface(
     const auto res = orig(that, ridd, ppvObj);
     log("IDirectDraw::QueryInterface res: {}", res);
 
+    if (SUCCEEDED(res) && ppvObj && *ppvObj)
+    {
+        log("installing follow on hooks for {}", reinterpret_cast<void *>(*ppvObj));
+        com_patch<^^direct_draw>(*ppvObj);
+    }
+
     return res;
 }
 }
@@ -53,7 +59,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
 
         log("direct draw object created: {} [vtable start: {}]", static_cast<void *>(dd), static_cast<void *>(vtable));
 
-        com_patch<^^direct_draw>(vtable);
+        com_patch<^^direct_draw>(dd);
     }
 
     return res;

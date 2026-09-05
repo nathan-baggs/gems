@@ -108,9 +108,12 @@ struct FuncInfo<R WINAPI(OrigFunc, That, Args...)>
 
 }
 
-template <auto namespce>
-auto com_patch(::PROC *vtable)
+template <auto namespce, class T>
+auto com_patch(T *obj)
 {
+    auto *com_obj = reinterpret_cast<::PROC **>(obj);
+    auto *com_vtable = *com_obj;
+
     static constexpr auto proxy_functions =
         std::define_static_array(find_functions_with_annotations<namespce, ^^COMDirectDrawProxyAnnotation>());
 
@@ -123,6 +126,14 @@ auto com_patch(::PROC *vtable)
         {
             constexpr auto index = std::distance(std::ranges::begin(impl::g_ddraw_com_layout), find);
 
+            auto hook = std::ranges::find_if(
+                impl::g_ddraw_hooks,
+                [com_vtable, index](const auto &e) { return e.vtable == com_vtable && e.index == index; });
+            if (hook != std::ranges::cend(impl::g_ddraw_hooks))
+            {
+                continue;
+            }
+
             using RetType = impl::FuncInfo<typename[:std::meta::type_of(func):]>::ret_type;
             using OrigFuncType = impl::FuncInfo<typename[:std::meta::type_of(func):]>::orig_func;
             using ArgsTupleType = impl::FuncInfo<typename[:std::meta::type_of(func):]>::args;
@@ -130,11 +141,11 @@ auto com_patch(::PROC *vtable)
             constexpr auto trampoline =
                 impl::build_com_trampoline<index, RetType, ArgsTupleType>(std::meta::dealias(^^OrigFuncType));
 
-            const auto orig_func = std::exchange(vtable[index], reinterpret_cast<::PROC>(&[:trampoline:]));
+            const auto orig_func = std::exchange(com_vtable[index], reinterpret_cast<::PROC>(&[:trampoline:]));
 
             impl::g_ddraw_hooks.push_back(
                 impl::Hook{
-                    .vtable = vtable,
+                    .vtable = com_vtable,
                     .index = index,
                     .orig_func = orig_func,
                     .hook_func = reinterpret_cast<::PROC>(&[:func:]),
