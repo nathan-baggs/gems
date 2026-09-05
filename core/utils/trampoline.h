@@ -20,9 +20,6 @@ struct GetArgs<R WINAPI(Args...)>
     using type = std::tuple<Args...>;
 };
 
-template <class...>
-struct Dbg;
-
 template <auto Orig, auto Proxy, class... Args>
 auto WINAPI trampoline(Args... args)
 {

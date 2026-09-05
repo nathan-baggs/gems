@@ -1,16 +1,41 @@
-#include "ddraw_export.h"
+#include <cstdint>
+#include <cstring>
 
+#define INITGUID
 #include <windows.h>
 
 #include <ddraw.h>
 
 #include "core/utils/annotations.h"
+#include "core/utils/com_hooking.h"
 #include "core/utils/error.h"
 #include "core/utils/formatter.h"
 #include "core/utils/log.h"
+#include "ddraw_export.h"
 
 namespace gems
 {
+
+namespace direct_draw
+{
+DDRAW_EXPORT[[= COMDirectDrawProxy]] ::HRESULT WINAPI QueryInterface(
+    ::HRESULT(WINAPI *orig)(::IDirectDraw *, REFIID ridd, ::LPVOID FAR *ppvObj),
+    ::IDirectDraw *that,
+    REFIID ridd,
+    ::LPVOID FAR *ppvObj)
+{
+    log("IDirectDraw::QueryInterface({}, {}, {}) orig: {}",
+        static_cast<void *>(that),
+        ridd,
+        static_cast<void *>(ppvObj),
+        reinterpret_cast<void *>(orig));
+
+    const auto res = orig(that, ridd, ppvObj);
+    log("IDirectDraw::QueryInterface res: {}", res);
+
+    return res;
+}
+}
 
 [[= IATProxy]] ::HRESULT WINAPI
 DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTDRAW *lplpDD, ::IUnknown *pUnkOuter)
@@ -20,6 +45,16 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
 
     const auto res = orig(lpGUID, lplpDD, pUnkOuter);
     log("DirectDrawCreate res: {}", res);
+
+    if (res == DD_OK)
+    {
+        auto *dd = *lplpDD;
+        auto *vtable = reinterpret_cast<::PROC *>(*reinterpret_cast<void **>(dd));
+
+        log("direct draw object created: {} [vtable start: {}]", static_cast<void *>(dd), static_cast<void *>(vtable));
+
+        com_patch<^^direct_draw>(vtable);
+    }
 
     return res;
 }

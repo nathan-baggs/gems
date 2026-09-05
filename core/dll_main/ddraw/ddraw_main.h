@@ -1,9 +1,7 @@
 #include <algorithm>
 #include <atomic>
-#include <libloaderapi.h>
 #include <memory>
 #include <meta>
-#include <minwindef.h>
 #include <source_location>
 #include <unordered_map>
 
@@ -16,6 +14,7 @@
 #include "core/utils/error.h"
 #include "core/utils/iat_patcher.h"
 #include "core/utils/log.h"
+#include "core/utils/meta.h"
 #include "core/utils/trampoline.h"
 
 using namespace std::literals;
@@ -169,29 +168,6 @@ VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIF
     }
 
     return reinterpret_cast<decltype(&GetProcAddress)>(g_get_proc_address)(hModule, lpProcName);
-}
-
-template <auto namespce, auto annotation>
-consteval auto find_functions_with_annotations() -> std::vector<std::meta::info>
-{
-    auto functions = std::vector<std::meta::info>{};
-
-    constexpr auto ctx = std::meta::access_context::current();
-    template for (constexpr auto func : std::define_static_array(std::meta::members_of(namespce, ctx)))
-    {
-        if constexpr (std::meta::is_function(func))
-        {
-            constexpr auto annotations =
-                std::define_static_array(std::meta::annotations_of_with_type(func, annotation));
-
-            if constexpr (!std::ranges::empty(annotations))
-            {
-                functions.push_back(func);
-            }
-        }
-    }
-
-    return functions;
 }
 
 auto try_load_iat_hooks(std::source_location loc = std::source_location::current())
