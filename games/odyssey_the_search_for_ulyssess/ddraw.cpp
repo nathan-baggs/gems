@@ -82,6 +82,18 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
     const auto res = orig(lpGuid, lplpDD, iid, pUnkOuter);
     log("DirectDrawCreateEx res: {}", res);
 
+    if (res == DD_OK)
+    {
+        auto *dd = *lplpDD;
+        auto *vtable = reinterpret_cast<::PROC *>(*reinterpret_cast<void **>(dd));
+
+        log("direct draw (ex) object created: {} [vtable start: {}]",
+            static_cast<void *>(dd),
+            static_cast<void *>(vtable));
+
+        com_patch<^^direct_draw>(dd);
+    }
+
     return res;
 }
 }
