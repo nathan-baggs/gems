@@ -16,6 +16,72 @@
 namespace gems
 {
 
+namespace IDirectDraw
+{
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
+    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw *, ::HWND hwnd, ::DWORD dwFlags),
+    ::IDirectDraw *that,
+    ::HWND hwnd,
+    ::DWORD dwFlags)
+{
+    log("IDirectDraw::SetCooperativeLevel({} {} {})",
+        static_cast<void *>(that),
+        hwnd,
+        SetCooperativeLevelFlags{dwFlags});
+
+    const auto res = orig(that, hwnd, dwFlags);
+    log("IDirectDraw::SetCooperativeLevel res: {}", res);
+
+    return res;
+}
+
+}
+
+namespace IDirectDraw4
+{
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
+    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw4 *, ::HWND hwnd, ::DWORD dwFlags),
+    ::IDirectDraw4 *that,
+    ::HWND hwnd,
+    ::DWORD dwFlags)
+{
+    log("IDirectDraw4::SetCooperativeLevel({} {} {})",
+        static_cast<void *>(that),
+        hwnd,
+        SetCooperativeLevelFlags{dwFlags});
+
+    const auto res = orig(that, hwnd, dwFlags);
+    log("IDirectDraw4::SetCooperativeLevel res: {}", res);
+
+    return res;
+}
+
+}
+
+namespace IDirectDraw7
+{
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
+    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw7 *, ::HWND hwnd, ::DWORD dwFlags),
+    ::IDirectDraw7 *that,
+    ::HWND hwnd,
+    ::DWORD dwFlags)
+{
+    log("IDirectDraw7::SetCooperativeLevel({} {} {})",
+        static_cast<void *>(that),
+        hwnd,
+        SetCooperativeLevelFlags{dwFlags});
+
+    const auto res = orig(that, hwnd, dwFlags);
+    log("IDirectDraw7::SetCooperativeLevel res: {}", res);
+
+    return res;
+}
+
+}
+
 namespace IUnknown
 {
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
@@ -36,11 +102,30 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
     if (SUCCEEDED(res) && ppvObj && *ppvObj)
     {
         log("installing follow on hooks for {}", reinterpret_cast<void *>(*ppvObj));
+
         com_patch<^^IUnknown>(*ppvObj);
+
+        if (::IsEqualGUID(ridd, IID_IDirectDraw))
+        {
+            com_patch<^^IDirectDraw>(*ppvObj);
+        }
+        else if (::IsEqualGUID(ridd, IID_IDirectDraw4))
+        {
+            com_patch<^^IDirectDraw4>(*ppvObj);
+        }
+        else if (::IsEqualGUID(ridd, IID_IDirectDraw7))
+        {
+            com_patch<^^IDirectDraw7>(*ppvObj);
+        }
+        else
+        {
+            log("unsupported follow on guid");
+        }
     }
 
     return res;
 }
+
 }
 
 [[= IATProxy]] ::HRESULT WINAPI
@@ -60,6 +145,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
         log("direct draw object created: {} [vtable start: {}]", static_cast<void *>(dd), static_cast<void *>(vtable));
 
         com_patch<^^IUnknown>(dd);
+        com_patch<^^IDirectDraw>(dd);
     }
 
     return res;
@@ -92,6 +178,23 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
             static_cast<void *>(vtable));
 
         com_patch<^^IUnknown>(dd);
+
+        if (::IsEqualGUID(iid, IID_IDirectDraw))
+        {
+            com_patch<^^IDirectDraw>(dd);
+        }
+        else if (::IsEqualGUID(iid, IID_IDirectDraw4))
+        {
+            com_patch<^^IDirectDraw4>(dd);
+        }
+        else if (::IsEqualGUID(iid, IID_IDirectDraw7))
+        {
+            com_patch<^^IDirectDraw7>(dd);
+        }
+        else
+        {
+            log("unsupported follow on guid");
+        }
     }
 
     return res;

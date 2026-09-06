@@ -27,6 +27,96 @@ constexpr std::string_view g_iunknown_com_layout[] = {
     "Release",
 };
 
+constexpr std::string_view g_idirect_draw_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "Compact",
+    "CreateClipper",
+    "CreatePalette",
+    "CreateSurface",
+    "DuplicateSurface",
+    "EnumDisplayModes",
+    "EnumSurfaces",
+    "FlipToGDISurface",
+    "GetCaps",
+    "GetDisplayMode",
+    "GetFourCCCodes",
+    "GetGDISurface",
+    "GetMonitorFrequency",
+    "GetScanLine",
+    "GetVerticalBlankStatus",
+    "Initialize",
+    "RestoreDisplayMode",
+    "SetCooperativeLevel",
+    "SetDisplayMode",
+    "WaitForVerticalBlank",
+};
+
+constexpr std::string_view g_idirect_draw4_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "Compact",
+    "CreateClipper",
+    "CreatePalette",
+    "CreateSurface",
+    "DuplicateSurface",
+    "EnumDisplayModes",
+    "EnumSurfaces",
+    "FlipToGDISurface",
+    "GetCaps",
+    "GetDisplayMode",
+    "GetFourCCCodes",
+    "GetGDISurface",
+    "GetMonitorFrequency",
+    "GetScanLine",
+    "GetVerticalBlankStatus",
+    "Initialize",
+    "RestoreDisplayMode",
+    "SetCooperativeLevel",
+    "SetDisplayMode",
+    "WaitForVerticalBlank",
+    "GetAvailableVidMem",
+    "GetSurfaceFromDC",
+    "RestoreAllSurfaces",
+    "TestCooperativeLevel",
+    "GetDeviceIdentifier",
+};
+
+constexpr std::string_view g_idirect_draw7_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "Compact",
+    "CreateClipper",
+    "CreatePalette",
+    "CreateSurface",
+    "DuplicateSurface",
+    "EnumDisplayModes",
+    "EnumSurfaces",
+    "FlipToGDISurface",
+    "GetCaps",
+    "GetDisplayMode",
+    "GetFourCCCodes",
+    "GetGDISurface",
+    "GetMonitorFrequency",
+    "GetScanLine",
+    "GetVerticalBlankStatus",
+    "Initialize",
+    "RestoreDisplayMode",
+    "SetCooperativeLevel",
+    "SetDisplayMode",
+    "WaitForVerticalBlank",
+    "GetAvailableVidMem",
+    "GetSurfaceFromDC",
+    "RestoreAllSurfaces",
+    "TestCooperativeLevel",
+    "GetDeviceIdentifier",
+    "StartModeTest",
+    "EvaluateMode",
+};
+
 struct Hook
 {
     void *vtable;
@@ -75,6 +165,18 @@ consteval auto namespace_to_function_names(std::string_view namespace_name) -> s
     if (namespace_name == "IUnknown")
     {
         return g_iunknown_com_layout;
+    }
+    else if (namespace_name == "IDirectDraw")
+    {
+        return g_idirect_draw_com_layout;
+    }
+    else if (namespace_name == "IDirectDraw4")
+    {
+        return g_idirect_draw4_com_layout;
+    }
+    else if (namespace_name == "IDirectDraw7")
+    {
+        return g_idirect_draw7_com_layout;
     }
 
     return {};

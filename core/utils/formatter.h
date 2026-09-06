@@ -1,7 +1,9 @@
 #pragma once
 
 #include <format>
+#include <sstream>
 
+#include <unordered_map>
 #include <windows.h>
 
 #include <ddraw.h>
@@ -56,5 +58,83 @@ struct std::formatter<::GUID>
             obj.Data4[5],
             obj.Data4[6],
             obj.Data4[7]);
+    }
+};
+
+template <>
+struct std::formatter<::HWND>
+{
+    constexpr auto parse(std::format_parse_context &ctx)
+    {
+        return ctx.begin();
+    }
+
+    auto format(const ::HWND &obj, std::format_context &ctx) const
+    {
+        return std::format_to(ctx.out(), "{}", reinterpret_cast<void *>(obj));
+    }
+};
+
+struct SetCooperativeLevelFlags
+{
+    ::DWORD flags;
+};
+
+template <>
+struct std::formatter<SetCooperativeLevelFlags>
+{
+    constexpr auto parse(std::format_parse_context &ctx)
+    {
+        return ctx.begin();
+    }
+
+    auto format(const SetCooperativeLevelFlags &obj, std::format_context &ctx) const
+    {
+        static auto lookup = std::unordered_map<::DWORD, std::string_view>{
+            {DDSCL_ALLOWMODEX, "DDSCL_ALLOWMODEX"},
+            {DDSCL_ALLOWREBOOT, "DDSCL_ALLOWREBOOT"},
+            {DDSCL_CREATEDEVICEWINDOW, "DDSCL_CREATEDEVICEWINDOW"},
+            {DDSCL_EXCLUSIVE, "DDSCL_EXCLUSIVE"},
+            {DDSCL_FPUPRESERVE, "DDSCL_FPUPRESERVE"},
+            {DDSCL_FPUSETUP, "DDSCL_FPUSETUP"},
+            {DDSCL_FULLSCREEN, "DDSCL_FULLSCREEN"},
+            {DDSCL_MULTITHREADED, "DDSCL_MULTITHREADED"},
+            {DDSCL_NORMAL, "DDSCL_NORMAL"},
+            {DDSCL_NOWINDOWCHANGES, "DDSCL_NOWINDOWCHANGES"},
+            {DDSCL_SETDEVICEWINDOW, "DDSCL_SETDEVICEWINDOW"},
+            {DDSCL_SETFOCUSWINDOW, "DDSCL_SETFOCUSWINDOW"},
+        };
+
+        auto strm = std::stringstream{};
+        auto value = obj.flags;
+        auto first = true;
+
+        for (const auto &[flag, name] : lookup)
+        {
+            if (value == 0)
+            {
+                break;
+            }
+
+            if (value & flag)
+            {
+                if (!first)
+                {
+                    strm << " | ";
+                }
+
+                strm << name;
+                first = false;
+
+                value &= ~flag;
+            }
+        }
+
+        if (value != 0)
+        {
+            strm << " | <unknown>";
+        }
+
+        return std::format_to(ctx.out(), "{:x} [{}]", obj.flags, strm.str());
     }
 };
