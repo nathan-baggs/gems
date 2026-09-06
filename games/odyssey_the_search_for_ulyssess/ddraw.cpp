@@ -20,7 +20,7 @@ namespace IDirectDraw
 {
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
-    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw *, ::HWND hwnd, ::DWORD dwFlags),
+    ::HRESULT(WINAPI *orig)(::IDirectDraw *, ::HWND hwnd, ::DWORD dwFlags),
     ::IDirectDraw *that,
     ::HWND hwnd,
     ::DWORD dwFlags)
@@ -36,13 +36,34 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
     return res;
 }
 
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
+    ::HRESULT(WINAPI *orig)(::IDirectDraw *, ::LPDDSURFACEDESC, ::LPDIRECTDRAWSURFACE *, ::IUnknown *),
+    ::IDirectDraw *that,
+    ::LPDDSURFACEDESC desc,
+    ::LPDIRECTDRAWSURFACE *surface,
+    ::IUnknown *outer)
+{
+    const auto desc_str = desc ? std::format("{}", *desc) : "<null>";
+
+    log("IDirectDraw::CreateSurface({} {} {} {}",
+        static_cast<void *>(that),
+        desc_str,
+        static_cast<void *>(surface),
+        static_cast<void *>(outer));
+
+    const auto res = orig(that, desc, surface, outer);
+    log("IDirectDraw::CreateSurface res: {}", res);
+
+    return res;
+}
+
 }
 
 namespace IDirectDraw4
 {
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
-    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw4 *, ::HWND hwnd, ::DWORD dwFlags),
+    ::HRESULT(WINAPI *orig)(::IDirectDraw4 *, ::HWND hwnd, ::DWORD dwFlags),
     ::IDirectDraw4 *that,
     ::HWND hwnd,
     ::DWORD dwFlags)
@@ -58,13 +79,44 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
     return res;
 }
 
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
+    ::HRESULT(WINAPI *orig)(::IDirectDraw4 *, ::LPDDSURFACEDESC2, ::LPDIRECTDRAWSURFACE4 *, ::IUnknown *),
+    ::IDirectDraw4 *that,
+    ::LPDDSURFACEDESC2 desc,
+    ::LPDIRECTDRAWSURFACE4 *surface,
+    ::IUnknown *outer)
+{
+    const auto desc_str =
+        desc
+            ? std::format(
+                "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
+                desc->dwSize,
+                desc->dwFlags,
+                desc->dwWidth,
+                desc->dwHeight,
+                desc->ddsCaps.dwCaps,
+                desc->ddsCaps.dwCaps2)
+            : "<null>";
+
+    log("IDirectDraw4::CreateSurface({} {} {} {}",
+        static_cast<void *>(that),
+        desc_str,
+        static_cast<void *>(surface),
+        static_cast<void *>(outer));
+
+    const auto res = orig(that, desc, surface, outer);
+    log("IDirectDraw4::CreateSurface res: {}", res);
+
+    return res;
+}
+
 }
 
 namespace IDirectDraw7
 {
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
-    [[maybe_unused]] ::HRESULT(WINAPI *orig)(::IDirectDraw7 *, ::HWND hwnd, ::DWORD dwFlags),
+    ::HRESULT(WINAPI *orig)(::IDirectDraw7 *, ::HWND hwnd, ::DWORD dwFlags),
     ::IDirectDraw7 *that,
     ::HWND hwnd,
     ::DWORD dwFlags)
@@ -76,6 +128,37 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI SetCooperativeLevel(
 
     const auto res = orig(that, hwnd, dwFlags);
     log("IDirectDraw7::SetCooperativeLevel res: {}", res);
+
+    return res;
+}
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
+    ::HRESULT(WINAPI *orig)(::IDirectDraw7 *, ::LPDDSURFACEDESC2, ::LPDIRECTDRAWSURFACE7 *, ::IUnknown *),
+    ::IDirectDraw7 *that,
+    ::LPDDSURFACEDESC2 desc,
+    ::LPDIRECTDRAWSURFACE7 *surface,
+    ::IUnknown *outer)
+{
+    const auto desc_str =
+        desc
+            ? std::format(
+                "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
+                desc->dwSize,
+                desc->dwFlags,
+                desc->dwWidth,
+                desc->dwHeight,
+                desc->ddsCaps.dwCaps,
+                desc->ddsCaps.dwCaps2)
+            : "<null>";
+
+    log("IDirectDraw7::CreateSurface({} {} {} {}",
+        static_cast<void *>(that),
+        desc_str,
+        static_cast<void *>(surface),
+        static_cast<void *>(outer));
+
+    const auto res = orig(that, desc, surface, outer);
+    log("IDirectDraw7::CreateSurface res: {}", res);
 
     return res;
 }
