@@ -155,6 +155,12 @@ VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIF
 
 ::FARPROC WINAPI GetProcAddress(::HMODULE hModule, ::LPCSTR lpProcName)
 {
+    auto module_name = std::string(MAX_PATH, '\0');
+    const auto length = ::GetModuleFileName(hModule, std::ranges::data(module_name), std::ranges::size(module_name));
+    module_name.resize(length);
+
+    log("GetProcAddress({} {})", module_name, lpProcName);
+
     ensure(g_proxied_ddraw != ::HMODULE{}, "proxied ddraw not set");
 
     if (hModule == g_proxied_ddraw)

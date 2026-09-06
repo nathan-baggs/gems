@@ -87,16 +87,15 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
     ::IUnknown *outer)
 {
     const auto desc_str =
-        desc
-            ? std::format(
-                "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
-                desc->dwSize,
-                desc->dwFlags,
-                desc->dwWidth,
-                desc->dwHeight,
-                desc->ddsCaps.dwCaps,
-                desc->ddsCaps.dwCaps2)
-            : "<null>";
+        desc ? std::format(
+                   "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
+                   desc->dwSize,
+                   desc->dwFlags,
+                   desc->dwWidth,
+                   desc->dwHeight,
+                   desc->ddsCaps.dwCaps,
+                   desc->ddsCaps.dwCaps2)
+             : "<null>";
 
     log("IDirectDraw4::CreateSurface({} {} {} {}",
         static_cast<void *>(that),
@@ -140,16 +139,15 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
     ::IUnknown *outer)
 {
     const auto desc_str =
-        desc
-            ? std::format(
-                "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
-                desc->dwSize,
-                desc->dwFlags,
-                desc->dwWidth,
-                desc->dwHeight,
-                desc->ddsCaps.dwCaps,
-                desc->ddsCaps.dwCaps2)
-            : "<null>";
+        desc ? std::format(
+                   "DDSURFACEDESC2{{size={} flags=0x{:08x} width={} height={} caps=0x{:08x} caps2=0x{:08x}}}",
+                   desc->dwSize,
+                   desc->dwFlags,
+                   desc->dwWidth,
+                   desc->dwHeight,
+                   desc->ddsCaps.dwCaps,
+                   desc->ddsCaps.dwCaps2)
+             : "<null>";
 
     log("IDirectDraw7::CreateSurface({} {} {} {}",
         static_cast<void *>(that),
@@ -282,6 +280,18 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
 
     return res;
 }
+
+[[= IATProxy]] ::HRESULT WINAPI
+D3DParseUnknownCommand(::HRESULT(WINAPI *orig)(::LPVOID, ::LPVOID *), ::LPVOID lpCmd, ::LPVOID *lpRetCmd)
+{
+    log("D3DParseUnknownCommand({}, {})", lpCmd, static_cast<void *>(lpRetCmd));
+    const auto res = orig(lpCmd, lpRetCmd);
+
+    log("D3DParseUnknownCommand res = {}", res);
+
+    return res;
+}
+
 }
 
 #include "core/dll_main/ddraw/ddraw_main.h"
