@@ -122,6 +122,7 @@ struct Hook
     void *vtable;
     std::size_t index;
     ::PROC orig_func;
+    ::PROC trampoline_func;
     ::PROC hook_func;
 };
 
@@ -222,6 +223,21 @@ auto com_patch(T *obj)
                 [com_vtable, index](const auto &e) { return e.vtable == com_vtable && e.index == index; });
             if (hook != std::ranges::cend(impl::g_hooks))
             {
+                if (com_vtable[index] != hook->trampoline_func)
+                {
+                    const auto auto_writer = AutoWriter{&com_vtable[index], sizeof(com_vtable[index])};
+
+                    hook->orig_func = std::exchange(com_vtable[index], hook->trampoline_func);
+
+                    log("reinstalled com hook: {} {} -> {} (via {}), index: {} vtable: {}",
+                        func_name,
+                        reinterpret_cast<void *>(hook->orig_func),
+                        reinterpret_cast<void *>(hook->hook_func),
+                        reinterpret_cast<void *>(hook->trampoline_func),
+                        hook->index,
+                        hook->vtable);
+                }
+
                 continue;
             }
 
@@ -239,14 +255,16 @@ auto com_patch(T *obj)
                     .vtable = com_vtable,
                     .index = index,
                     .orig_func = orig_func,
+                    .trampoline_func = reinterpret_cast<::PROC>(&[:trampoline:]),
                     .hook_func = reinterpret_cast<::PROC>(&[:func:]),
                 });
 
             auto &new_hook = impl::g_hooks.back();
-            log("new com hook: {} {} -> {}, index: {} vtable: {}",
+            log("new com hook: {} {} -> {} (via {}), index: {} vtable: {}",
                 func_name,
                 reinterpret_cast<void *>(new_hook.orig_func),
                 reinterpret_cast<void *>(new_hook.hook_func),
+                reinterpret_cast<void *>(new_hook.trampoline_func),
                 new_hook.index,
                 new_hook.vtable);
         }
