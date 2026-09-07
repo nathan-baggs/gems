@@ -124,35 +124,6 @@ auto narrow(const UNICODE_STRING *str) -> std::string
     return narrow(std::wstring_view{str->Buffer, str->Length / sizeof(WCHAR)});
 }
 
-VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIFICATION_DATA *NotificationData, ::PVOID)
-{
-    switch (NotificationReason)
-    {
-        case 1:
-        {
-            const auto full_dll_name = narrow(NotificationData->Loaded.FullDllName);
-
-            log("dll loaded: {}", full_dll_name);
-
-            const auto module = ::LoadLibrary(full_dll_name.c_str());
-            ensure(module != NULL, "failed to load module");
-
-            const auto res = gems::impl::patch_out_module(module, "ddraw.dll", g_iat_entries);
-            if (!res)
-            {
-                log("failed to patch {}: {}", full_dll_name, res.error());
-            }
-
-            break;
-        }
-        case 2:
-        {
-            log("dll unloaded: {}", narrow(NotificationData->Unloaded.FullDllName));
-            break;
-        }
-    }
-}
-
 ::FARPROC WINAPI GetProcAddress(::HMODULE hModule, ::LPCSTR lpProcName)
 {
     auto module_name = std::string(MAX_PATH, '\0');
@@ -174,6 +145,48 @@ VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIF
     }
 
     return reinterpret_cast<decltype(&GetProcAddress)>(g_get_proc_address)(hModule, lpProcName);
+}
+
+VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIFICATION_DATA *NotificationData, ::PVOID)
+{
+    switch (NotificationReason)
+    {
+        case 1:
+        {
+            const auto full_dll_name = narrow(NotificationData->Loaded.FullDllName);
+
+            log("dll loaded: {}", full_dll_name);
+
+            const auto module = ::LoadLibrary(full_dll_name.c_str());
+            ensure(module != NULL, "failed to load module");
+
+            {
+                const auto res = gems::impl::patch_out_module(module, "ddraw.dll", g_iat_entries);
+                if (!res)
+                {
+                    log("failed to patch {}: {}", full_dll_name, res.error());
+                }
+            }
+
+            {
+                const auto res = gems::impl::patch_out_module(
+                    module,
+                    "kernel32.dll",
+                    {{"GetProcAddress", reinterpret_cast<void *>(&gems::impl::GetProcAddress)}});
+                if (!res)
+                {
+                    log("failed to patch {}: {}", full_dll_name, res.error());
+                }
+            }
+
+            break;
+        }
+        case 2:
+        {
+            log("dll unloaded: {}", narrow(NotificationData->Unloaded.FullDllName));
+            break;
+        }
+    }
 }
 
 auto try_load_iat_hooks(std::source_location loc = std::source_location::current())
