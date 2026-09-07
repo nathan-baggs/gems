@@ -53,6 +53,72 @@ constexpr std::string_view g_idirect_draw_com_layout[] = {
     "WaitForVerticalBlank",
 };
 
+constexpr std::string_view g_idirect_draw2_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "Compact",
+    "CreateClipper",
+    "CreatePalette",
+    "CreateSurface",
+    "DuplicateSurface",
+    "EnumDisplayModes",
+    "EnumSurfaces",
+    "FlipToGDISurface",
+    "GetCaps",
+    "GetDisplayMode",
+    "GetFourCCCodes",
+    "GetGDISurface",
+    "GetMonitorFrequency",
+    "GetScanLine",
+    "GetVerticalBlankStatus",
+    "Initialize",
+    "RestoreDisplayMode",
+    "SetCooperativeLevel",
+    "SetDisplayMode",
+    "WaitForVerticalBlank",
+    "GetAvailableVidMem",
+};
+
+constexpr std::string_view g_idirect_draw_surface_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "AddAttachedSurface",
+    "AddOverlayDirtyRect",
+    "Blt",
+    "BltBatch",
+    "BltFast",
+    "DeleteAttachedSurface",
+    "EnumAttachedSurfaces",
+    "EnumOverlayZOrders",
+    "Flip",
+    "GetAttachedSurface",
+    "GetBltStatus",
+    "GetCaps",
+    "GetClipper",
+    "GetColorKey",
+    "GetDC",
+    "GetFlipStatus",
+    "GetOverlayPosition",
+    "GetPalette",
+    "GetPixelFormat",
+    "GetSurfaceDesc",
+    "Initialize",
+    "IsLost",
+    "Lock",
+    "ReleaseDC",
+    "Restore",
+    "SetClipper",
+    "SetColorKey",
+    "SetOverlayPosition",
+    "SetPalette",
+    "Unlock",
+    "UpdateOverlay",
+    "UpdateOverlayDisplay",
+    "UpdateOverlayZOrder",
+};
+
 constexpr std::string_view g_idirect_draw4_com_layout[] = {
     "QueryInterface",
     "AddRef",
@@ -230,6 +296,14 @@ consteval auto namespace_to_function_names(std::string_view namespace_name) -> s
     else if (namespace_name == "IDirectDraw")
     {
         return g_idirect_draw_com_layout;
+    }
+    else if (namespace_name == "IDirectDraw2")
+    {
+        return g_idirect_draw2_com_layout;
+    }
+    else if (namespace_name == "IDirectDrawSurface")
+    {
+        return g_idirect_draw_surface_com_layout;
     }
     else if (namespace_name == "IDirectDraw4")
     {
