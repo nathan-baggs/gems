@@ -6,8 +6,11 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-
 #include <unordered_map>
+
+#include <windows.h>
+
+#include <d3d.h>
 #include <ddraw.h>
 
 namespace gems::impl
@@ -83,6 +86,14 @@ struct std::formatter<::GUID>
         else if (::IsEqualGUID(obj, IID_IDirectDraw7))
         {
             return std::format_to(ctx.out(), "IID_IDirectDraw7");
+        }
+        else if (::IsEqualGUID(obj, IID_IDirect3D3))
+        {
+            return std::format_to(ctx.out(), "IID_IDirect3D3");
+        }
+        else if (::IsEqualGUID(obj, IID_IDirect3DHALDevice))
+        {
+            return std::format_to(ctx.out(), "IID_IDirect3DHALDevice");
         }
 
         return std::format_to(
@@ -233,19 +244,13 @@ struct std::formatter<::DDSURFACEDESC>
             {DDPF_BUMPDUDV, "DDPF_BUMPDUDV"},
         };
 
-        auto fields = std::format(
-            "size={} flags={}",
-            obj.dwSize,
-            gems::impl::format_dword_flags(obj.dwFlags, desc_flag_names));
+        auto fields =
+            std::format("size={} flags={}", obj.dwSize, gems::impl::format_dword_flags(obj.dwFlags, desc_flag_names));
 
         const auto append = [&fields](std::string_view name, auto value)
-        {
-            std::format_to(std::back_inserter(fields), " {}={}", name, value);
-        };
+        { std::format_to(std::back_inserter(fields), " {}={}", name, value); };
         const auto append_hex = [&fields](std::string_view name, ::DWORD value)
-        {
-            std::format_to(std::back_inserter(fields), " {}=0x{:08x}", name, value);
-        };
+        { std::format_to(std::back_inserter(fields), " {}=0x{:08x}", name, value); };
         const auto append_color_key = [&fields](std::string_view name, const ::DDCOLORKEY &key)
         {
             std::format_to(

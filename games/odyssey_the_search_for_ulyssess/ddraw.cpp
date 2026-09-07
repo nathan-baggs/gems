@@ -163,6 +163,32 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
 
 }
 
+namespace IDirect3D3
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateDevice(
+    ::HRESULT(WINAPI *orig)(::IDirect3D3 *, REFCLSID, ::LPDIRECTDRAWSURFACE4, ::LPDIRECT3DDEVICE3 *, ::LPUNKNOWN),
+    ::IDirect3D3 *that,
+    REFCLSID rclsid,
+    ::LPDIRECTDRAWSURFACE4 lpDDS,
+    ::LPDIRECT3DDEVICE3 *lplpD3DDevice,
+    ::LPUNKNOWN pUnkOuter)
+{
+    log("IDirect3D3::CreateDevice({} {} {} {} {})",
+        static_cast<void *>(that),
+        rclsid,
+        static_cast<void *>(lpDDS),
+        static_cast<void *>(lplpD3DDevice),
+        static_cast<void *>(pUnkOuter));
+
+    const auto res = orig(that, rclsid, lpDDS, lplpD3DDevice, pUnkOuter);
+
+    log("IDirect3D3::CreateDevice res: {}", res);
+
+    return res;
+}
+
+}
+
 namespace IUnknown
 {
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
@@ -197,6 +223,10 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
         else if (::IsEqualGUID(ridd, IID_IDirectDraw7))
         {
             com_patch<^^IDirectDraw7>(*ppvObj);
+        }
+        else if (::IsEqualGUID(ridd, IID_IDirect3D3))
+        {
+            com_patch<^^IDirect3D3>(*ppvObj);
         }
         else
         {

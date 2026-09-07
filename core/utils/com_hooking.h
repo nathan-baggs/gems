@@ -117,6 +117,21 @@ constexpr std::string_view g_idirect_draw7_com_layout[] = {
     "EvaluateMode",
 };
 
+constexpr std::string_view g_idirect3d3_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "EnumDevices",
+    "CreateLight",
+    "CreateMaterial",
+    "CreateViewport",
+    "FindDevice",
+    "CreateDevice",
+    "CreateVertexBuffer",
+    "EnumZBufferFormats",
+    "EvictManagedTextures",
+};
+
 struct Hook
 {
     void *vtable;
@@ -178,6 +193,10 @@ consteval auto namespace_to_function_names(std::string_view namespace_name) -> s
     else if (namespace_name == "IDirectDraw7")
     {
         return g_idirect_draw7_com_layout;
+    }
+    else if (namespace_name == "IDirect3D3")
+    {
+        return g_idirect3d3_com_layout;
     }
 
     return {};
