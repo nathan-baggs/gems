@@ -16,6 +16,36 @@
 namespace gems
 {
 
+namespace IUnknown
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
+    ::HRESULT(WINAPI *orig)(::IUnknown *, REFIID ridd, ::LPVOID FAR *ppvObj),
+    ::IUnknown *that,
+    REFIID ridd,
+    ::LPVOID FAR *ppvObj);
+
+}
+
+namespace IDirect3D3
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateDevice(
+    ::HRESULT(WINAPI *orig)(::IDirect3D3 *, REFCLSID, ::LPDIRECTDRAWSURFACE4, ::LPDIRECT3DDEVICE3 *, ::LPUNKNOWN),
+    ::IDirect3D3 *that,
+    REFCLSID rclsid,
+    ::LPDIRECTDRAWSURFACE4 lpDDS,
+    ::LPDIRECT3DDEVICE3 *lplpD3DDevice,
+    ::LPUNKNOWN pUnkOuter);
+}
+
+namespace IDirect3D3Device3
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+BeginScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that);
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that);
+}
+
 namespace IDirectDraw
 {
 
@@ -163,32 +193,6 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
 
 }
 
-namespace IDirect3D3
-{
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateDevice(
-    ::HRESULT(WINAPI *orig)(::IDirect3D3 *, REFCLSID, ::LPDIRECTDRAWSURFACE4, ::LPDIRECT3DDEVICE3 *, ::LPUNKNOWN),
-    ::IDirect3D3 *that,
-    REFCLSID rclsid,
-    ::LPDIRECTDRAWSURFACE4 lpDDS,
-    ::LPDIRECT3DDEVICE3 *lplpD3DDevice,
-    ::LPUNKNOWN pUnkOuter)
-{
-    log("IDirect3D3::CreateDevice({} {} {} {} {})",
-        static_cast<void *>(that),
-        rclsid,
-        static_cast<void *>(lpDDS),
-        static_cast<void *>(lplpD3DDevice),
-        static_cast<void *>(pUnkOuter));
-
-    const auto res = orig(that, rclsid, lpDDS, lplpD3DDevice, pUnkOuter);
-
-    log("IDirect3D3::CreateDevice res: {}", res);
-
-    return res;
-}
-
-}
-
 namespace IUnknown
 {
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
@@ -232,6 +236,64 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
         {
             log("unsupported follow on guid");
         }
+    }
+
+    return res;
+}
+
+}
+
+namespace IDirect3D3Device3
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+BeginScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that)
+{
+    log("IDirect3D3Device3::BeginScene({})", static_cast<void *>(that));
+
+    const auto res = orig(that);
+    log("IDirect3D3Device3::BeginScene res: {}", res);
+
+    return res;
+}
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that)
+{
+    log("IDirect3D3Device3::EndScene({})", static_cast<void *>(that));
+
+    const auto res = orig(that);
+    log("IDirect3D3Device3::EndScene res: {}", res);
+
+    return res;
+}
+}
+
+namespace IDirect3D3
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateDevice(
+    ::HRESULT(WINAPI *orig)(::IDirect3D3 *, REFCLSID, ::LPDIRECTDRAWSURFACE4, ::LPDIRECT3DDEVICE3 *, ::LPUNKNOWN),
+    ::IDirect3D3 *that,
+    REFCLSID rclsid,
+    ::LPDIRECTDRAWSURFACE4 lpDDS,
+    ::LPDIRECT3DDEVICE3 *lplpD3DDevice,
+    ::LPUNKNOWN pUnkOuter)
+{
+    log("IDirect3D3::CreateDevice({} {} {} {} {})",
+        static_cast<void *>(that),
+        rclsid,
+        static_cast<void *>(lpDDS),
+        static_cast<void *>(lplpD3DDevice),
+        static_cast<void *>(pUnkOuter));
+
+    const auto res = orig(that, rclsid, lpDDS, lplpD3DDevice, pUnkOuter);
+    log("IDirect3D3::CreateDevice res: {}", res);
+
+    if (SUCCEEDED(res) && lplpD3DDevice && *lplpD3DDevice)
+    {
+        log("installing follow on hooks for {}", reinterpret_cast<void *>(*lplpD3DDevice));
+
+        com_patch<^^IUnknown>(*lplpD3DDevice);
+        // com_patch<^^IDirect3D3Device3>(*lplpD3DDevice);
     }
 
     return res;
@@ -304,7 +366,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
         }
         else
         {
-            log("unsupported follow on guid");
+            log("unsupported follow on guid: {}", iid);
         }
     }
 
