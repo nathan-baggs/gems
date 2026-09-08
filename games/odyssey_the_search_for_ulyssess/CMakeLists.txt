@@ -5,7 +5,10 @@ add_library(ddraw SHARED
 
 generate_export_header(ddraw)
 
-install(TARGETS ddraw DESTINATION bin)
+install(TARGETS ddraw
+  RUNTIME DESTINATION .
+  COMPONENT odyssey_the_search_for_ulyssess
+)
 
 target_compile_options(ddraw PRIVATE
   -Wall
