@@ -16,6 +16,38 @@
 namespace gems
 {
 
+namespace cm6
+{
+
+int(__cdecl *HNMPI_init_orig)(int, unsigned, int, char *);
+
+int __cdecl HNMPI_Init(int bpp, unsigned height, int width, char *hnm_header)
+{
+    log("HNMPI_Init({:x} (-> 0x10) {:x} {:x} {}", bpp, height, width, hnm_header);
+    bpp = 0x10;
+    return HNMPI_init_orig(bpp, height, width, hnm_header);
+}
+
+}
+
+namespace kernel32
+{
+
+::FARPROC GetProcAddress(decltype(&::GetProcAddress) orig, ::HMODULE hModule, ::LPCSTR lpProcName)
+{
+    const auto func = orig(hModule, lpProcName);
+
+    if (std::string_view(lpProcName) == "HNMPI_Init")
+    {
+        cm6::HNMPI_init_orig = reinterpret_cast<decltype(&cm6::HNMPI_Init)>(func);
+        return reinterpret_cast<::FARPROC>(&cm6::HNMPI_Init);
+    }
+
+    return func;
+}
+
+}
+
 namespace IUnknown
 {
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
@@ -53,8 +85,8 @@ auto rect_string(const ::RECT *rect) -> std::string
     return rect ? std::format("[{},{}-{},{}]", rect->left, rect->top, rect->right, rect->bottom) : "<null>";
 }
 
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Blt(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDIRECTDRAWSURFACE, ::LPRECT, ::DWORD, ::LPDDBLTFX),
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDIRECTDRAWSURFACE, ::LPRECT, ::DWORD, ::LPDDBLTFX),
     ::IDirectDrawSurface *that,
     ::LPRECT dest_rect,
     ::LPDIRECTDRAWSURFACE source,
@@ -84,7 +116,12 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI BltFast(
     ::DWORD flags)
 {
     log("IDirectDrawSurface::BltFast(dest={} x={} y={} source={} rect={} flags=0x{:08x})",
-        static_cast<void *>(that), x, y, static_cast<void *>(source), rect_string(source_rect), flags);
+        static_cast<void *>(that),
+        x,
+        y,
+        static_cast<void *>(source),
+        rect_string(source_rect),
+        flags);
     const auto res = orig(that, x, y, source, source_rect, flags);
     log("IDirectDrawSurface::BltFast res: {}", res);
     return res;
@@ -97,7 +134,9 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Flip(
     ::DWORD flags)
 {
     log("IDirectDrawSurface::Flip(surface={} target={} flags=0x{:08x})",
-        static_cast<void *>(that), static_cast<void *>(target_override), flags);
+        static_cast<void *>(that),
+        static_cast<void *>(target_override),
+        flags);
     const auto res = orig(that, target_override, flags);
     log("IDirectDrawSurface::Flip res: {}", res);
     return res;
@@ -110,7 +149,9 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
 {
     const auto res = orig(that, desc);
     log("IDirectDrawSurface::GetSurfaceDesc(surface={}) res: {} {}",
-        static_cast<void *>(that), res, desc ? std::format("{}", *desc) : "<null>");
+        static_cast<void *>(that),
+        res,
+        desc ? std::format("{}", *desc) : "<null>");
     return res;
 }
 
@@ -124,18 +165,86 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
 {
     const auto res = orig(that, rect, desc, flags, event);
     log("IDirectDrawSurface::Lock(surface={} rect={} flags=0x{:08x} event={}) res: {} {}",
-        static_cast<void *>(that), rect_string(rect), flags, event, res, desc ? std::format("{}", *desc) : "<null>");
+        static_cast<void *>(that),
+        rect_string(rect),
+        flags,
+        event,
+        res,
+        desc ? std::format("{}", *desc) : "<null>");
     return res;
 }
 
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Unlock(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID),
-    ::IDirectDrawSurface *that,
-    ::LPVOID data)
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID), ::IDirectDrawSurface *that, ::LPVOID data)
 {
     log("IDirectDrawSurface::Unlock(surface={} data={})", static_cast<void *>(that), data);
     const auto res = orig(that, data);
     log("IDirectDrawSurface::Unlock res: {}", res);
+    return res;
+}
+}
+
+namespace IDirectDrawSurface2
+{
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDIRECTDRAWSURFACE2, ::LPRECT, ::DWORD, ::LPDDBLTFX),
+    ::IDirectDrawSurface2 *that,
+    ::LPRECT dest_rect,
+    ::LPDIRECTDRAWSURFACE2 source,
+    ::LPRECT source_rect,
+    ::DWORD flags,
+    ::LPDDBLTFX fx)
+{
+    log("IDirectDrawSurface2::Blt(dest={} rect={} source={} rect={} flags=0x{:08x} fx={})",
+        static_cast<void *>(that),
+        IDirectDrawSurface::rect_string(dest_rect),
+        static_cast<void *>(source),
+        IDirectDrawSurface::rect_string(source_rect),
+        flags,
+        static_cast<void *>(fx));
+    const auto res = orig(that, dest_rect, source, source_rect, flags, fx);
+    log("IDirectDrawSurface2::Blt res: {}", res);
+    return res;
+}
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
+    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPDDSURFACEDESC),
+    ::IDirectDrawSurface2 *that,
+    ::LPDDSURFACEDESC desc)
+{
+    const auto res = orig(that, desc);
+    log("IDirectDrawSurface2::GetSurfaceDesc(surface={}) res: {} {}",
+        static_cast<void *>(that),
+        res,
+        desc ? std::format("{}", *desc) : "<null>");
+    return res;
+}
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
+    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDDSURFACEDESC, ::DWORD, ::HANDLE),
+    ::IDirectDrawSurface2 *that,
+    ::LPRECT rect,
+    ::LPDDSURFACEDESC desc,
+    ::DWORD flags,
+    ::HANDLE event)
+{
+    const auto res = orig(that, rect, desc, flags, event);
+    log("IDirectDrawSurface2::Lock(surface={} rect={} flags=0x{:08x} event={}) res: {} {}",
+        static_cast<void *>(that),
+        IDirectDrawSurface::rect_string(rect),
+        flags,
+        event,
+        res,
+        desc ? std::format("{}", *desc) : "<null>");
+    return res;
+}
+
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPVOID), ::IDirectDrawSurface2 *that, ::LPVOID data)
+{
+    log("IDirectDrawSurface2::Unlock(surface={} data={})", static_cast<void *>(that), data);
+    const auto res = orig(that, data);
+    log("IDirectDrawSurface2::Unlock res: {}", res);
     return res;
 }
 }
@@ -187,10 +296,8 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
     return res;
 }
 
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetDisplayMode(
-    ::HRESULT(WINAPI *orig)(::IDirectDraw *, ::LPDDSURFACEDESC),
-    ::IDirectDraw *that,
-    ::LPDDSURFACEDESC desc)
+DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
+GetDisplayMode(::HRESULT(WINAPI *orig)(::IDirectDraw *, ::LPDDSURFACEDESC), ::IDirectDraw *that, ::LPDDSURFACEDESC desc)
 {
     const auto res = orig(that, desc);
     const auto desc_str = desc ? std::format("{}", *desc) : "<null>";
@@ -399,30 +506,39 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
     {
         log("installing follow on hooks for {}", reinterpret_cast<void *>(*ppvObj));
 
-        com_patch<^^IUnknown>(*ppvObj);
-
         if (::IsEqualGUID(ridd, IID_IDirectDraw))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirectDraw>(*ppvObj);
         }
         else if (::IsEqualGUID(ridd, IID_IDirectDraw2))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirectDraw2>(*ppvObj);
         }
         else if (::IsEqualGUID(ridd, IID_IDirectDrawSurface))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirectDrawSurface>(*ppvObj);
+        }
+        else if (::IsEqualGUID(ridd, IID_IDirectDrawSurface2))
+        {
+            com_patch<^^IUnknown>(*ppvObj);
+            com_patch<^^IDirectDrawSurface2>(*ppvObj);
         }
         else if (::IsEqualGUID(ridd, IID_IDirectDraw4))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirectDraw4>(*ppvObj);
         }
         else if (::IsEqualGUID(ridd, IID_IDirectDraw7))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirectDraw7>(*ppvObj);
         }
         else if (::IsEqualGUID(ridd, IID_IDirect3D3))
         {
+            com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirect3D3>(*ppvObj);
         }
         else

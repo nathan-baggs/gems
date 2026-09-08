@@ -119,6 +119,48 @@ constexpr std::string_view g_idirect_draw_surface_com_layout[] = {
     "UpdateOverlayZOrder",
 };
 
+constexpr std::string_view g_idirect_draw_surface2_com_layout[] = {
+    "QueryInterface",
+    "AddRef",
+    "Release",
+    "AddAttachedSurface",
+    "AddOverlayDirtyRect",
+    "Blt",
+    "BltBatch",
+    "BltFast",
+    "DeleteAttachedSurface",
+    "EnumAttachedSurfaces",
+    "EnumOverlayZOrders",
+    "Flip",
+    "GetAttachedSurface",
+    "GetBltStatus",
+    "GetCaps",
+    "GetClipper",
+    "GetColorKey",
+    "GetDC",
+    "GetFlipStatus",
+    "GetOverlayPosition",
+    "GetPalette",
+    "GetPixelFormat",
+    "GetSurfaceDesc",
+    "Initialize",
+    "IsLost",
+    "Lock",
+    "ReleaseDC",
+    "Restore",
+    "SetClipper",
+    "SetColorKey",
+    "SetOverlayPosition",
+    "SetPalette",
+    "Unlock",
+    "UpdateOverlay",
+    "UpdateOverlayDisplay",
+    "UpdateOverlayZOrder",
+    "GetDDInterface",
+    "PageLock",
+    "PageUnlock",
+};
+
 constexpr std::string_view g_idirect_draw4_com_layout[] = {
     "QueryInterface",
     "AddRef",
@@ -304,6 +346,10 @@ consteval auto namespace_to_function_names(std::string_view namespace_name) -> s
     else if (namespace_name == "IDirectDrawSurface")
     {
         return g_idirect_draw_surface_com_layout;
+    }
+    else if (namespace_name == "IDirectDrawSurface2")
+    {
+        return g_idirect_draw_surface2_com_layout;
     }
     else if (namespace_name == "IDirectDraw4")
     {

@@ -144,7 +144,8 @@ auto narrow(const UNICODE_STRING *str) -> std::string
         return reinterpret_cast<::FARPROC>(lookup->second);
     }
 
-    return reinterpret_cast<decltype(&GetProcAddress)>(g_get_proc_address)(hModule, lpProcName);
+    return kernel32::GetProcAddress(
+        reinterpret_cast<decltype(&::GetProcAddress)>(g_get_proc_address), hModule, lpProcName);
 }
 
 VOID CALLBACK LdrDllNotification(::ULONG NotificationReason, const LDR_DLL_NOTIFICATION_DATA *NotificationData, ::PVOID)
