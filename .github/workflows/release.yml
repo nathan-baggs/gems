@@ -1,0 +1,63 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build MinGW toolchain image
+        run: docker build --tag patcher-mingw64 .
+
+      - name: Configure
+        run: |
+          rm -rf build
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            patcher-mingw64 \
+            cmake -B build \
+              -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
+              -G "Ninja Multi-Config"
+
+      - name: Build release configuration
+        run: |
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            patcher-mingw64 \
+            cmake --build build --config Release
+
+      - name: Package game artifacts
+        run: |
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}/build" \
+            patcher-mingw64 \
+            cpack --config CPackConfig.cmake -C Release
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            build/*.zip
