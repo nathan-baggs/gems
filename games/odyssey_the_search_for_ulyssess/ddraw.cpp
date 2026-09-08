@@ -99,84 +99,10 @@ EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that
 namespace IDirectDrawSurface
 {
 
-auto rect_string(const ::RECT *rect) -> std::string
-{
-    return rect ? std::format("[{},{}-{},{}]", rect->left, rect->top, rect->right, rect->bottom) : "<null>";
-}
 
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
-Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDIRECTDRAWSURFACE, ::LPRECT, ::DWORD, ::LPDDBLTFX),
-    ::IDirectDrawSurface *that,
-    ::LPRECT dest_rect,
-    ::LPDIRECTDRAWSURFACE source,
-    ::LPRECT source_rect,
-    ::DWORD flags,
-    ::LPDDBLTFX fx)
-{
-    log("IDirectDrawSurface::Blt(dest={} rect={} source={} rect={} flags=0x{:08x} fx={})",
-        static_cast<void *>(that),
-        rect_string(dest_rect),
-        static_cast<void *>(source),
-        rect_string(source_rect),
-        flags,
-        static_cast<void *>(fx));
-    const auto res = orig(that, dest_rect, source, source_rect, flags, fx);
-    log("IDirectDrawSurface::Blt res: {}", res);
 
-    return res;
-}
 
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI BltFast(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::DWORD, ::DWORD, ::LPDIRECTDRAWSURFACE, ::LPRECT, ::DWORD),
-    ::IDirectDrawSurface *that,
-    ::DWORD x,
-    ::DWORD y,
-    ::LPDIRECTDRAWSURFACE source,
-    ::LPRECT source_rect,
-    ::DWORD flags)
-{
-    log("IDirectDrawSurface::BltFast(dest={} x={} y={} source={} rect={} flags=0x{:08x})",
-        static_cast<void *>(that),
-        x,
-        y,
-        static_cast<void *>(source),
-        rect_string(source_rect),
-        flags);
-    const auto res = orig(that, x, y, source, source_rect, flags);
-    log("IDirectDrawSurface::BltFast res: {}", res);
 
-    return res;
-}
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Flip(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPDIRECTDRAWSURFACE, ::DWORD),
-    ::IDirectDrawSurface *that,
-    ::LPDIRECTDRAWSURFACE target_override,
-    ::DWORD flags)
-{
-    log("IDirectDrawSurface::Flip(surface={} target={} flags=0x{:08x})",
-        static_cast<void *>(that),
-        static_cast<void *>(target_override),
-        flags);
-    const auto res = orig(that, target_override, flags);
-    log("IDirectDrawSurface::Flip res: {}", res);
-
-    return res;
-}
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPDDSURFACEDESC),
-    ::IDirectDrawSurface *that,
-    ::LPDDSURFACEDESC desc)
-{
-    const auto res = orig(that, desc);
-    log("IDirectDrawSurface::GetSurfaceDesc(surface={}) res: {} {}",
-        static_cast<void *>(that),
-        res,
-        desc ? std::format("{}", *desc) : "<null>");
-
-    return res;
-}
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
     ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDDSURFACEDESC, ::DWORD, ::HANDLE),
@@ -187,13 +113,6 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
     ::HANDLE event)
 {
     const auto res = orig(that, rect, desc, flags, event);
-    log("IDirectDrawSurface::Lock(surface={} rect={} flags=0x{:08x} event={}) res: {} {}",
-        static_cast<void *>(that),
-        rect_string(rect),
-        flags,
-        event,
-        res,
-        desc ? std::format("{}", *desc) : "<null>");
 
     if (SUCCEEDED(res) && desc && desc->lpSurface)
     {
@@ -210,7 +129,6 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
             desc->ddpfPixelFormat.dwGBitMask = 0x07e0;
             desc->ddpfPixelFormat.dwBBitMask = 0x001f;
 
-            log("patching surface format: {}", *desc);
         }
     }
 
@@ -223,7 +141,6 @@ Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID), ::IDirectDrawS
     const auto surface = g_tracked_surfaces.find(that);
     if (surface != std::ranges::cend(g_tracked_surfaces) && surface->second.native_pixels)
     {
-        log("converting pixel format");
 
         const auto &[decoder_pixels, native_pixels, native_pitch, width, height] = surface->second;
         const auto *source = std::ranges::data(decoder_pixels);
@@ -248,91 +165,16 @@ Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID), ::IDirectDrawS
             }
         }
     }
-    else if (surface == std::ranges::cend(g_tracked_surfaces))
-    {
-        log("Unlock for untracked surface");
-    }
 
     const auto unlock_data = surface != std::ranges::cend(g_tracked_surfaces) && surface->second.native_pixels
                                  ? surface->second.native_pixels
                                  : data;
-    log("IDirectDrawSurface::Unlock(surface={} data={})", static_cast<void *>(that), unlock_data);
     const auto res = orig(that, unlock_data);
-    log("IDirectDrawSurface::Unlock res: {}", res);
 
     return res;
 }
 }
 
-namespace IDirectDrawSurface2
-{
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
-Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDIRECTDRAWSURFACE2, ::LPRECT, ::DWORD, ::LPDDBLTFX),
-    ::IDirectDrawSurface2 *that,
-    ::LPRECT dest_rect,
-    ::LPDIRECTDRAWSURFACE2 source,
-    ::LPRECT source_rect,
-    ::DWORD flags,
-    ::LPDDBLTFX fx)
-{
-    log("IDirectDrawSurface2::Blt(dest={} rect={} source={} rect={} flags=0x{:08x} fx={})",
-        static_cast<void *>(that),
-        IDirectDrawSurface::rect_string(dest_rect),
-        static_cast<void *>(source),
-        IDirectDrawSurface::rect_string(source_rect),
-        flags,
-        static_cast<void *>(fx));
-    const auto res = orig(that, dest_rect, source, source_rect, flags, fx);
-    log("IDirectDrawSurface2::Blt res: {}", res);
-
-    return res;
-}
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPDDSURFACEDESC),
-    ::IDirectDrawSurface2 *that,
-    ::LPDDSURFACEDESC desc)
-{
-    const auto res = orig(that, desc);
-    log("IDirectDrawSurface2::GetSurfaceDesc(surface={}) res: {} {}",
-        static_cast<void *>(that),
-        res,
-        desc ? std::format("{}", *desc) : "<null>");
-
-    return res;
-}
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
-    ::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDDSURFACEDESC, ::DWORD, ::HANDLE),
-    ::IDirectDrawSurface2 *that,
-    ::LPRECT rect,
-    ::LPDDSURFACEDESC desc,
-    ::DWORD flags,
-    ::HANDLE event)
-{
-    const auto res = orig(that, rect, desc, flags, event);
-    log("IDirectDrawSurface2::Lock(surface={} rect={} flags=0x{:08x} event={}) res: {} {}",
-        static_cast<void *>(that),
-        IDirectDrawSurface::rect_string(rect),
-        flags,
-        event,
-        res,
-        desc ? std::format("{}", *desc) : "<null>");
-
-    return res;
-}
-
-DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
-Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPVOID), ::IDirectDrawSurface2 *that, ::LPVOID data)
-{
-    log("IDirectDrawSurface2::Unlock(surface={} data={})", static_cast<void *>(that), data);
-    const auto res = orig(that, data);
-    log("IDirectDrawSurface2::Unlock res: {}", res);
-
-    return res;
-}
-}
 
 namespace IDirectDraw
 {
@@ -590,18 +432,11 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
     REFIID ridd,
     ::LPVOID FAR *ppvObj)
 {
-    log("IUnknown::QueryInterface({}, {}, {}) orig: {}",
-        static_cast<void *>(that),
-        ridd,
-        static_cast<void *>(ppvObj),
-        reinterpret_cast<void *>(orig));
 
     const auto res = orig(that, ridd, ppvObj);
-    log("IUnknown::QueryInterface res: {}", res);
 
     if (SUCCEEDED(res) && ppvObj && *ppvObj)
     {
-        log("installing follow on hooks for {}", reinterpret_cast<void *>(*ppvObj));
 
         if (::IsEqualGUID(ridd, IID_IDirectDraw))
         {
@@ -638,10 +473,6 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
             com_patch<^^IUnknown>(*ppvObj);
             com_patch<^^IDirect3D3>(*ppvObj);
         }
-        else
-        {
-            log("unsupported follow on guid");
-        }
     }
 
     return res;
@@ -654,23 +485,13 @@ namespace IDirect3D3Device3
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
 BeginScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that)
 {
-    log("IDirect3D3Device3::BeginScene({})", static_cast<void *>(that));
-
-    const auto res = orig(that);
-    log("IDirect3D3Device3::BeginScene res: {}", res);
-
-    return res;
+    return orig(that);
 }
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
 EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that)
 {
-    log("IDirect3D3Device3::EndScene({})", static_cast<void *>(that));
-
-    const auto res = orig(that);
-    log("IDirect3D3Device3::EndScene res: {}", res);
-
-    return res;
+    return orig(that);
 }
 }
 
@@ -786,12 +607,7 @@ DirectDrawCreate(decltype(&::DirectDrawCreate) orig, ::GUID *lpGUID, ::LPDIRECTD
 [[= IATProxy]] ::HRESULT WINAPI
 D3DParseUnknownCommand(::HRESULT(WINAPI *orig)(::LPVOID, ::LPVOID *), ::LPVOID lpCmd, ::LPVOID *lpRetCmd)
 {
-    log("D3DParseUnknownCommand({}, {})", lpCmd, static_cast<void *>(lpRetCmd));
-    const auto res = orig(lpCmd, lpRetCmd);
-
-    log("D3DParseUnknownCommand res = {}", res);
-
-    return res;
+    return orig(lpCmd, lpRetCmd);
 }
 
 }
