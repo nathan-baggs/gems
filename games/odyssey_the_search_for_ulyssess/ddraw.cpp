@@ -1,5 +1,8 @@
 #include <cstdint>
 #include <cstring>
+#include <unordered_map>
+#include <vector>
+#include <winerror.h>
 
 #define INITGUID
 #include <windows.h>
@@ -16,8 +19,21 @@
 namespace gems
 {
 
+struct TrackedSurface
+{
+    std::vector<std::uint16_t> decoder_pixels;
+    void *native_pixels;
+    std::uint32_t native_pitch;
+    std::uint32_t width;
+    std::uint32_t height;
+};
+
+auto g_tracked_surfaces = std::unordered_map<::IDirectDrawSurface *, TrackedSurface>{};
+
 namespace cm6
 {
+
+auto g_expected_buffers = std::uint32_t{};
 
 int(__cdecl *HNMPI_init_orig)(int, unsigned, int, char *);
 
@@ -25,6 +41,8 @@ int __cdecl HNMPI_Init(int bpp, unsigned height, int width, char *hnm_header)
 {
     log("HNMPI_Init({:x} (-> 0x10) {:x} {:x} {}", bpp, height, width, hnm_header);
     bpp = 0x10;
+    g_expected_buffers = 2u;
+
     return HNMPI_init_orig(bpp, height, width, hnm_header);
 }
 
@@ -80,6 +98,7 @@ EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that
 
 namespace IDirectDrawSurface
 {
+
 auto rect_string(const ::RECT *rect) -> std::string
 {
     return rect ? std::format("[{},{}-{},{}]", rect->left, rect->top, rect->right, rect->bottom) : "<null>";
@@ -103,6 +122,7 @@ Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDIRECTDRAWSURF
         static_cast<void *>(fx));
     const auto res = orig(that, dest_rect, source, source_rect, flags, fx);
     log("IDirectDrawSurface::Blt res: {}", res);
+
     return res;
 }
 
@@ -124,6 +144,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI BltFast(
         flags);
     const auto res = orig(that, x, y, source, source_rect, flags);
     log("IDirectDrawSurface::BltFast res: {}", res);
+
     return res;
 }
 
@@ -139,6 +160,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Flip(
         flags);
     const auto res = orig(that, target_override, flags);
     log("IDirectDrawSurface::Flip res: {}", res);
+
     return res;
 }
 
@@ -152,6 +174,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
         static_cast<void *>(that),
         res,
         desc ? std::format("{}", *desc) : "<null>");
+
     return res;
 }
 
@@ -171,21 +194,79 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
         event,
         res,
         desc ? std::format("{}", *desc) : "<null>");
+
+    if (SUCCEEDED(res) && desc && desc->lpSurface)
+    {
+        auto surface = g_tracked_surfaces.find(that);
+
+        if (surface != std::ranges::end(g_tracked_surfaces))
+        {
+            surface->second.native_pixels = desc->lpSurface;
+            surface->second.native_pitch = desc->lPitch;
+            desc->lpSurface = std::ranges::data(surface->second.decoder_pixels);
+            desc->lPitch = surface->second.width * sizeof(std::uint16_t);
+            desc->ddpfPixelFormat.dwRGBBitCount = 16;
+            desc->ddpfPixelFormat.dwRBitMask = 0xf800;
+            desc->ddpfPixelFormat.dwGBitMask = 0x07e0;
+            desc->ddpfPixelFormat.dwBBitMask = 0x001f;
+
+            log("patching surface format: {}", *desc);
+        }
+    }
+
     return res;
 }
 
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
 Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID), ::IDirectDrawSurface *that, ::LPVOID data)
 {
-    log("IDirectDrawSurface::Unlock(surface={} data={})", static_cast<void *>(that), data);
-    const auto res = orig(that, data);
+    const auto surface = g_tracked_surfaces.find(that);
+    if (surface != std::ranges::cend(g_tracked_surfaces) && surface->second.native_pixels)
+    {
+        log("converting pixel format");
+
+        const auto &[decoder_pixels, native_pixels, native_pitch, width, height] = surface->second;
+        const auto *source = std::ranges::data(decoder_pixels);
+        auto *destination = reinterpret_cast<std::byte *>(native_pixels);
+
+        for (std::uint32_t y = 0; y < height; ++y)
+        {
+            auto *cursor = reinterpret_cast<std::uint32_t *>(destination + y * native_pitch);
+
+            for (std::uint32_t x = 0; x < width; ++x)
+            {
+                const auto pixel = source[y * width + x];
+                const auto r5 = (pixel >> 11) & 0x1f;
+                const auto g6 = (pixel >> 5) & 0x3f;
+                const auto b5 = pixel & 0x1f;
+
+                const auto r8 = (r5 << 3) | (r5 >> 2);
+                const auto g8 = (g6 << 2) | (g6 >> 4);
+                const auto b8 = (b5 << 3) | (b5 >> 2);
+
+                cursor[x] = (r8 << 16) | (g8 << 8) | b8;
+            }
+        }
+    }
+    else if (surface == std::ranges::cend(g_tracked_surfaces))
+    {
+        log("Unlock for untracked surface");
+    }
+
+    const auto unlock_data = surface != std::ranges::cend(g_tracked_surfaces) && surface->second.native_pixels
+                                 ? surface->second.native_pixels
+                                 : data;
+    log("IDirectDrawSurface::Unlock(surface={} data={})", static_cast<void *>(that), unlock_data);
+    const auto res = orig(that, unlock_data);
     log("IDirectDrawSurface::Unlock res: {}", res);
+
     return res;
 }
 }
 
 namespace IDirectDrawSurface2
 {
+
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI
 Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDIRECTDRAWSURFACE2, ::LPRECT, ::DWORD, ::LPDDBLTFX),
     ::IDirectDrawSurface2 *that,
@@ -204,6 +285,7 @@ Blt(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPRECT, ::LPDIRECTDRAWSUR
         static_cast<void *>(fx));
     const auto res = orig(that, dest_rect, source, source_rect, flags, fx);
     log("IDirectDrawSurface2::Blt res: {}", res);
+
     return res;
 }
 
@@ -217,6 +299,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI GetSurfaceDesc(
         static_cast<void *>(that),
         res,
         desc ? std::format("{}", *desc) : "<null>");
+
     return res;
 }
 
@@ -236,6 +319,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
         event,
         res,
         desc ? std::format("{}", *desc) : "<null>");
+
     return res;
 }
 
@@ -245,6 +329,7 @@ Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface2 *, ::LPVOID), ::IDirectDraw
     log("IDirectDrawSurface2::Unlock(surface={} data={})", static_cast<void *>(that), data);
     const auto res = orig(that, data);
     log("IDirectDrawSurface2::Unlock res: {}", res);
+
     return res;
 }
 }
@@ -291,6 +376,7 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
         com_patch<^^IUnknown>(*surface);
         com_patch<^^IDirectDrawSurface>(*surface);
     }
+
     log("IDirectDraw::CreateSurface res: {}", res);
 
     return res;
@@ -306,7 +392,6 @@ GetDisplayMode(::HRESULT(WINAPI *orig)(::IDirectDraw *, ::LPDDSURFACEDESC), ::ID
 
     return res;
 }
-
 }
 
 namespace IDirectDraw2
@@ -333,7 +418,19 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI CreateSurface(
     {
         com_patch<^^IUnknown>(*surface);
         com_patch<^^IDirectDrawSurface>(*surface);
+
+        if (desc && cm6::g_expected_buffers > 0)
+        {
+            g_tracked_surfaces[*surface] = {
+                .decoder_pixels = std::vector<std::uint16_t>(desc->dwWidth * desc->dwHeight),
+                .native_pixels = nullptr,
+                .native_pitch = 0,
+                .width = desc->dwWidth,
+                .height = desc->dwHeight};
+            --cm6::g_expected_buffers;
+        }
     }
+
     log("IDirectDraw2::CreateSurface res: {}", res);
 
     return res;
