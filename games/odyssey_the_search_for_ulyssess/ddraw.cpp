@@ -99,11 +99,6 @@ EndScene(::HRESULT(WINAPI *orig)(::IDirect3DDevice3 *), ::IDirect3DDevice3 *that
 namespace IDirectDrawSurface
 {
 
-
-
-
-
-
 DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
     ::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPRECT, ::LPDDSURFACEDESC, ::DWORD, ::HANDLE),
     ::IDirectDrawSurface *that,
@@ -128,7 +123,6 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI Lock(
             desc->ddpfPixelFormat.dwRBitMask = 0xf800;
             desc->ddpfPixelFormat.dwGBitMask = 0x07e0;
             desc->ddpfPixelFormat.dwBBitMask = 0x001f;
-
         }
     }
 
@@ -174,7 +168,6 @@ Unlock(::HRESULT(WINAPI *orig)(::IDirectDrawSurface *, ::LPVOID), ::IDirectDrawS
     return res;
 }
 }
-
 
 namespace IDirectDraw
 {
@@ -432,12 +425,10 @@ DDRAW_EXPORT[[= COMProxy]] ::HRESULT WINAPI QueryInterface(
     REFIID ridd,
     ::LPVOID FAR *ppvObj)
 {
-
     const auto res = orig(that, ridd, ppvObj);
 
     if (SUCCEEDED(res) && ppvObj && *ppvObj)
     {
-
         if (::IsEqualGUID(ridd, IID_IDirectDraw))
         {
             com_patch<^^IUnknown>(*ppvObj);
