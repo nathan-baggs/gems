@@ -1,9 +1,10 @@
 name: Build and Release
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Post-merge Version Bump"]
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -11,13 +12,15 @@ permissions:
 
 jobs:
   build-and-release:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
+        with:
+          ref: main
       - name: Build MinGW toolchain image
         run: docker build --tag patcher-mingw64 .
 
@@ -51,12 +54,22 @@ jobs:
             patcher-mingw64 \
             cpack --config CPackConfig.cmake -C Release
 
+      - name: Read package version
+        id: version
+        run: |
+          version=$(sed -nE 's/^set\(CPACK_PACKAGE_VERSION "([^"]+)"\)$/\1/p' build/CPackConfig.cmake)
+          if [ -z "$version" ]; then
+            echo "::error::Could not find CPACK_PACKAGE_VERSION in build/CPackConfig.cmake"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          target_commitish: main
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |

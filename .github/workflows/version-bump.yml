@@ -1,0 +1,72 @@
+name: Post-merge Version Bump
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version in CMakeLists.txt
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake_file=CMakeLists.txt
+          version=$(grep -oP 'VERSION\s*"\K[0-9]+(\.[0-9]+){2,3}' "$cmake_file" | head -n1)
+          if [ -z "$version" ]; then
+            echo "::error::Could not find a CalVer project version in $cmake_file"
+            exit 1
+          fi
+
+          IFS=. read -r old_year old_month old_day old_tweak <<< "$version"
+          old_tweak=${old_tweak:-0}
+
+          current_year=$(date -u +'%Y')
+          current_month=$(date -u +'%-m')
+          current_day=$(date -u +'%-d')
+          old_month_number=$((10#$old_month))
+          old_day_number=$((10#$old_day))
+
+          if [ "$old_year" = "$current_year" ] && \
+             [ "$old_month_number" -eq "$current_month" ] && \
+             [ "$old_day_number" -eq "$current_day" ]; then
+            new_tweak=$((10#$old_tweak + 1))
+          else
+            new_tweak=0
+          fi
+
+          new_version="${current_year}.${current_month}.${current_day}.${new_tweak}"
+          sed -i -E \
+            "0,/VERSION[[:space:]]+\"[0-9]+(\.[0-9]+){2,3}\"/s//VERSION \"${new_version}\"/" \
+            "$cmake_file"
+
+          echo "version=$version -> $new_version"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push version change
+        run: |
+          git add CMakeLists.txt
+          if git diff --cached --quiet; then
+            echo "No version change"
+          else
+            git commit -m "ci: bump version to ${{ steps.version.outputs.new_version }}"
+            git push
+          fi
